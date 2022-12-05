@@ -1,0 +1,23 @@
+{
+  "name": "computeshaderrnd_webgpu",
+  "version": "1.0.0",
+  "description": "ComputeShaderRnd_WebGPU",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redcamel/ComputeShaderRnd_WebGPU.git"
+  },
+  "types":"./node_modules/@webgpu/types",
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/redcamel/ComputeShaderRnd_WebGPU/issues"
+  },
+  "homepage": "https://github.com/redcamel/ComputeShaderRnd_WebGPU#readme",
+  "devDependencies": {
+    "@webgpu/types": "^0.1.23"
+  }
+}
