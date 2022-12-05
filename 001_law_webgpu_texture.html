@@ -189,7 +189,7 @@ fn main() -> @location(0) vec4<f32> {
 		const originSize = renderTexture.width * renderTexture.height * 16
 		const cloneBuffer = device.createBuffer({
 			size: originSize,
-			usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+			usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
 		})
 		console.log(renderTexture.width, renderTexture.height)
 		console.log(renderTexture, renderTextureView)
@@ -212,8 +212,291 @@ fn main() -> @location(0) vec4<f32> {
 		device.queue.submit([readPixelCommandEncoder.finish()]);
 		console.log(cloneBuffer)
 
-        //TODO compute Shader 처리
-        //TODO 처리된 결과를 다시 렌더링
+		//TODO compute Shader 처리
+
+		const computeCode = `
+
+            @group(0) @binding(0) var<storage, read_write> output: array<f32>;
+            @compute @workgroup_size(64,1,1)
+            fn main (
+              @builtin(global_invocation_id)
+              global_id : vec3<u32>,
+
+              @builtin(local_invocation_id)
+              local_id : vec3<u32>,
+            ){
+            let index = global_id.x +
+                    global_id.y * local_id.x +
+                    global_id.z * local_id.x * local_id.y;
+
+                 output[index] = output[index];
+            };
+
+        `
+		const cModule = device.createShaderModule({
+			code: computeCode,
+		})
+
+		const bindGroupLayout_compute = device.createBindGroupLayout({
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.COMPUTE,
+					buffer: {
+						type: 'storage'
+					}
+				}
+			]
+		})
+
+		const bindGroup_compute = device.createBindGroup({
+			layout: bindGroupLayout_compute,
+			entries: [
+				{
+					binding: 0,
+					resource: {
+						buffer: cloneBuffer
+					}
+
+				}
+			]
+		})
+
+		const pipeline_compute = device.createComputePipeline({
+			layout: device.createPipelineLayout({
+				bindGroupLayouts: [
+					bindGroupLayout_compute,
+				]
+			}),
+			compute: {
+				module: cModule,
+				entryPoint: 'main',
+			}
+		})
+
+		const commentEncode_compute = device.createCommandEncoder()
+		const computePassEncoder = commentEncode_compute.beginComputePass()
+		computePassEncoder.setPipeline(pipeline_compute)
+		computePassEncoder.setBindGroup(0, bindGroup_compute)
+		computePassEncoder.dispatchWorkgroups(64, 1, 1);
+		computePassEncoder.end();
+		device.queue.submit([commentEncode_compute.finish()]);
+
+		console.log(pipeline_compute)
+
+		const finalTexture = device.createTexture({
+			size: {
+				width: renderTexture.width,
+				height: renderTexture.height,
+			},
+			format: gpu.getPreferredCanvasFormat(),
+			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+		})
+
+		//TODO 다시 텍스쳐화
+		{
+			const readPixelCommandEncoder = device.createCommandEncoder()
+
+			readPixelCommandEncoder.copyBufferToTexture(
+				{
+					buffer: cloneBuffer,
+					bytesPerRow: Math.ceil(renderTexture.width * 4 / 256) * 256,
+					rowsPerImage: renderTexture.height
+				},
+				{
+					texture: finalTexture,
+					origin: {x: 0, y: 0, z: 0},
+				},
+				{
+					width: renderTexture.width,
+					height: renderTexture.height,
+					depthOrArrayLayers: 1
+				}
+			)
+			device.queue.submit([readPixelCommandEncoder.finish()]);
+			console.log(cloneBuffer)
+		}
+
+		//TODO 처리된 결과를 다시 렌더링
+		{
+					const vertexCode2 = `
+
+struct OutData {
+  @builtin(position) position : vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
+@vertex
+fn main( @builtin(vertex_index) VertexIndex : u32 ) -> OutData {
+  var pos = array<vec4<f32>, 6>(
+    vec4<f32>(-1, -1, 0.0, 1.0),
+    vec4<f32>(1, -1, 1.0, 1.0),
+    vec4<f32>(-1,  1,  0.0, 0.0),
+    //
+   vec4<f32>(-1, 1,    0.0, 0.0),
+   vec4<f32>(1, -1,   0.0, 1.0),
+   vec4<f32>(1, 1,   1.0, 0.0),
+
+
+
+  );
+   var outData : OutData;
+  outData.position = vec4<f32>(pos[VertexIndex].xy, 0.0, 1.0);
+  outData.uv = pos[VertexIndex].zw;
+  return outData;
+}`
+			const vModuleDescriptor = {
+				code: vertexCode2
+			}
+					const fragmentCode2 = `
+@group(0) @binding(0) var _Sampler: sampler;
+@group(0) @binding(1) var _Texture: texture_2d<f32>;
+@fragment
+fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+  return textureSample(_Texture,_Sampler, uv);
+}
+
+		`
+			const fModuleDescriptor = {
+				code: fragmentCode2
+			}
+			/**
+			 *
+			 * @type {GPUShaderModule}
+			 */
+			const vModule = device.createShaderModule(vModuleDescriptor)
+			/**
+			 *
+			 * @type {GPUShaderModule}
+			 */
+			const fModule = device.createShaderModule(fModuleDescriptor)
+			console.log(vModule)
+			console.log(fModule)
+
+			/**
+			 *
+			 * @type {GPUBindGroupLayoutDescriptor}
+			 */
+			const bindGroupLayoutDescriptor = {
+				entries: [
+					{
+						binding: 0,
+						visibility: GPUShaderStage.FRAGMENT,
+						sampler: {
+							type: 'filtering',
+						},
+					},
+					{
+						binding: 1,
+						visibility: GPUShaderStage.FRAGMENT,
+						texture: {},
+					}
+				]
+			}
+			const bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor)
+			console.log(bindGroupLayout)
+			/**
+			 *
+			 * @type {GPUBindGroupDescriptor}
+			 */
+			const bindGroupDescriptor = {
+				layout: bindGroupLayout,
+				entries: [
+					{
+						binding: 0,
+						resource: device.createSampler({})
+					},
+					{
+						binding: 1,
+						resource: finalTexture.createView()
+					}
+				]
+			}
+			/**
+			 *
+			 * @type {GPUBindGroup}
+			 */
+			const bindGroup = device.createBindGroup(bindGroupDescriptor)
+			console.log(bindGroup)
+
+			/**
+			 *
+			 * @type {GPUPipelineLayoutDescriptor}
+			 */
+			const pipelineLayoutDescriptor = {
+				bindGroupLayouts: [bindGroupLayout]
+			}
+			const pipelineLayout = device.createPipelineLayout(pipelineLayoutDescriptor)
+
+			/**
+			 *
+			 * @type {GPURenderPipelineDescriptor}
+			 */
+			const pipelineDescriptor = {
+				layout: pipelineLayout,
+				vertex: {
+					module: vModule,
+					entryPoint: 'main'
+				},
+				fragment: {
+					module: fModule,
+					entryPoint: 'main',
+					targets: [
+						{
+							format: navigator.gpu.getPreferredCanvasFormat()
+						}
+					]
+				}
+			}
+			/**
+			 *
+			 * @type {GPURenderPipeline}
+			 */
+			const pipeline = device.createRenderPipeline(pipelineDescriptor)
+			console.log(pipeline)
+
+			const renderTexture = context.getCurrentTexture()
+			/**
+			 *
+			 * @type {GPUTextureView}
+			 */
+			const renderTextureView2 = renderTexture.createView()
+
+			/**
+			 *
+			 * @type {GPURenderPassColorAttachment}
+			 */
+			const colorAttachment = {
+				view: renderTextureView2,
+				loadOp: "clear",
+				storeOp: 'store'
+			}
+
+			/**
+			 *
+			 * @type {GPUCommandEncoder}
+			 */
+			const commandEncoder = device.createCommandEncoder()
+
+			/**
+			 *
+			 * @type {GPURenderPassDescriptor}
+			 */
+			const renderPassDescriptor = {
+				colorAttachments: [
+					colorAttachment
+				]
+			}
+			/**
+			 *
+			 * @type {GPURenderPassEncoder}
+			 */
+			const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor)
+			passEncoder.setPipeline(pipeline)
+			passEncoder.setBindGroup(0, bindGroup)
+			passEncoder.draw(6, 1, 0, 0);
+			passEncoder.end()
+			device.queue.submit([commandEncoder.finish()])
+		}
 
 	}
 	run()
