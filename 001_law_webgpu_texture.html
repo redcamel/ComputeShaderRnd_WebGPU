@@ -5,7 +5,7 @@
     <title>Title</title>
 </head>
 <body>
-<canvas width="500" height="500" id="cvs"/>
+<canvas width="512" height="512" id="cvs"/>
 <script>
 
 	const run = async () => {
@@ -33,24 +33,35 @@
 		context.configure(canvasConfiguration)
 
 		const vertexCode = `
+struct OutData {
+  @builtin(position) position : vec4<f32>,
+  @location(0) uv: vec2<f32>,
+};
 @vertex
-fn main( @builtin(vertex_index) VertexIndex : u32 ) -> @builtin(position) vec4<f32> {
-  var pos = array<vec2<f32>, 6>(
-    vec2<f32>(-1, 1),
-    vec2<f32>(-1, -1),
-    vec2<f32>(1, 1),
+fn main( @builtin(vertex_index) VertexIndex : u32 ) -> OutData {
+var pos = array<vec4<f32>, 6>(
+    vec4<f32>(-1, -1, 0.0, 1.0),
+    vec4<f32>(1, -1, 1.0, 1.0),
+    vec4<f32>(-1,  1,  0.0, 0.0),
     //
-   vec2<f32>(1, 1),
-   vec2<f32>(1, -1),
-   vec2<f32>(-1, -1),
+   vec4<f32>(-1, 1,    0.0, 0.0),
+   vec4<f32>(1, -1,   1.0, 1.0),
+   vec4<f32>(1, 1,   1.0, 0.0),
+
   );
-  return vec4<f32>(pos[VertexIndex], 0.0, 1.0);
+   var outData : OutData;
+  outData.position = vec4<f32>(pos[VertexIndex].xy, 0.0, 1.0);
+  outData.uv = pos[VertexIndex].zw;
+  return outData;
 }
 		`
 		const fragmentCode = `
+
+@group(0) @binding(0) var _Sampler: sampler;
+@group(0) @binding(1) var _Texture: texture_2d<f32>;
 @fragment
-fn main() -> @location(0) vec4<f32> {
-  return vec4<f32>(1.0, 0.0, 0.0, 0.5);
+fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+  return textureSample(_Texture,_Sampler, uv);
 }
 		`
 		/**
@@ -85,17 +96,69 @@ fn main() -> @location(0) vec4<f32> {
 		 * @type {GPUBindGroupLayoutDescriptor}
 		 */
 		const bindGroupLayoutDescriptor = {
-			entries: []
+			entries: [
+				{
+					binding: 0,
+					visibility: GPUShaderStage.FRAGMENT,
+					sampler: {
+						type: 'filtering',
+					},
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.FRAGMENT,
+					texture: {},
+				}
+			]
 		}
 		const bindGroupLayout = device.createBindGroupLayout(bindGroupLayoutDescriptor)
 		console.log(bindGroupLayout)
+
+		function makeWebGPUTexture(gpuDevice, source, generateMipmaps = true, label) {
+			// 텍스쳐에 대한 정의를 내리고
+			const textureDescriptor = {
+				size: {width: source.width, height: source.height},
+				format: 'rgba8unorm',
+				usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+				label
+			};
+			// 밉맵을 생성할꺼면 소스를 계산해서... 밉맵 카운트를 추가 정의한다.
+			if (generateMipmaps) {
+				// Compute how many mip levels are needed for a full chain.
+				textureDescriptor.mipLevelCount = Math.floor(Math.log2(Math.max(source.width, source.height))) + 1;
+				// Needed in order to use render passes to generate the mipmaps.
+				textureDescriptor.usage |= GPUTextureUsage.RENDER_ATTACHMENT;
+			}
+			// 생성할 원본 소스를 생성한다.
+			const texture = gpuDevice.createTexture(textureDescriptor);
+			// 생성한 텍스쳐에 데이터를 밀어넣는다.
+			gpuDevice.queue.copyExternalImageToTexture({source}, {texture}, textureDescriptor.size);
+
+
+			return texture;
+		}
+
+		let testTexture
+		await fetch('./crate.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
+			console.log(imgBitmap)
+			testTexture = makeWebGPUTexture(device, imgBitmap, true, './crate.png')
+		})
 		/**
 		 *
 		 * @type {GPUBindGroupDescriptor}
 		 */
 		const bindGroupDescriptor = {
 			layout: bindGroupLayout,
-			entries: []
+			entries: [
+				{
+					binding: 0,
+					resource: device.createSampler()
+				},
+				{
+					binding: 1,
+					resource: testTexture.createView()
+				}
+			]
 		}
 		/**
 		 *
@@ -191,6 +254,7 @@ fn main() -> @location(0) vec4<f32> {
 			size: originSize,
 			usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
 		})
+
 		console.log(renderTexture.width, renderTexture.height)
 		console.log(renderTexture, renderTextureView)
 		readPixelCommandEncoder.copyTextureToBuffer(
@@ -200,7 +264,7 @@ fn main() -> @location(0) vec4<f32> {
 			},
 			{
 				buffer: cloneBuffer,
-				bytesPerRow: Math.ceil(renderTexture.width * 4 / 256) * 256,
+				bytesPerRow: renderTexture.width * 4,
 				rowsPerImage: renderTexture.height
 			},
 			{
@@ -210,26 +274,23 @@ fn main() -> @location(0) vec4<f32> {
 			}
 		)
 		device.queue.submit([readPixelCommandEncoder.finish()]);
-		console.log(cloneBuffer)
+		console.log('cloneBuffer',cloneBuffer)
 
 		//TODO compute Shader 처리
 
 		const computeCode = `
+            struct Image {
+                rgba: array<u32>
+            };
+            @group(0) @binding(0) var<storage, read_write> output: Image;
+            @compute @workgroup_size(1,1,1)
 
-            @group(0) @binding(0) var<storage, read_write> output: array<f32>;
-            @compute @workgroup_size(64,1,1)
             fn main (
-              @builtin(global_invocation_id)
-              global_id : vec3<u32>,
+              @builtin(global_invocation_id) global_id : vec3<u32>,
 
-              @builtin(local_invocation_id)
-              local_id : vec3<u32>,
             ){
-            let index = global_id.x +
-                    global_id.y * local_id.x +
-                    global_id.z * local_id.x * local_id.y;
-
-                 output[index] = output[index];
+                let index:u32 =  global_id.x + global_id.y * 512u;
+                output.rgba[index] = 4294967295u - output.rgba[index] ;
             };
 
         `
@@ -278,7 +339,7 @@ fn main() -> @location(0) vec4<f32> {
 		const computePassEncoder = commentEncode_compute.beginComputePass()
 		computePassEncoder.setPipeline(pipeline_compute)
 		computePassEncoder.setBindGroup(0, bindGroup_compute)
-		computePassEncoder.dispatchWorkgroups(64, 1, 1);
+		computePassEncoder.dispatchWorkgroups(512, 512);
 		computePassEncoder.end();
 		device.queue.submit([commentEncode_compute.finish()]);
 
@@ -300,7 +361,7 @@ fn main() -> @location(0) vec4<f32> {
 			readPixelCommandEncoder.copyBufferToTexture(
 				{
 					buffer: cloneBuffer,
-					bytesPerRow: Math.ceil(renderTexture.width * 4 / 256) * 256,
+					bytesPerRow: renderTexture.width * 4,
 					rowsPerImage: renderTexture.height
 				},
 				{
@@ -308,18 +369,18 @@ fn main() -> @location(0) vec4<f32> {
 					origin: {x: 0, y: 0, z: 0},
 				},
 				{
-					width: renderTexture.width,
-					height: renderTexture.height,
+					width: finalTexture.width,
+					height: finalTexture.height,
 					depthOrArrayLayers: 1
 				}
 			)
 			device.queue.submit([readPixelCommandEncoder.finish()]);
-			console.log(cloneBuffer)
+
 		}
 
 		//TODO 처리된 결과를 다시 렌더링
 		{
-					const vertexCode2 = `
+			const vertexCode2 = `
 
 struct OutData {
   @builtin(position) position : vec4<f32>,
@@ -328,15 +389,13 @@ struct OutData {
 @vertex
 fn main( @builtin(vertex_index) VertexIndex : u32 ) -> OutData {
   var pos = array<vec4<f32>, 6>(
-    vec4<f32>(-1, -1, 0.0, 1.0),
+  vec4<f32>(-1, -1, 0.0, 1.0),
     vec4<f32>(1, -1, 1.0, 1.0),
     vec4<f32>(-1,  1,  0.0, 0.0),
     //
    vec4<f32>(-1, 1,    0.0, 0.0),
-   vec4<f32>(1, -1,   0.0, 1.0),
+   vec4<f32>(1, -1,   1.0, 1.0),
    vec4<f32>(1, 1,   1.0, 0.0),
-
-
 
   );
    var outData : OutData;
@@ -347,7 +406,7 @@ fn main( @builtin(vertex_index) VertexIndex : u32 ) -> OutData {
 			const vModuleDescriptor = {
 				code: vertexCode2
 			}
-					const fragmentCode2 = `
+			const fragmentCode2 = `
 @group(0) @binding(0) var _Sampler: sampler;
 @group(0) @binding(1) var _Texture: texture_2d<f32>;
 @fragment
