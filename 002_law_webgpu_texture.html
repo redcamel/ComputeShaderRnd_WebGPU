@@ -5,10 +5,11 @@
     <title>Title</title>
 </head>
 <body>
-<canvas width="512" height="512" id="cvs"/>
+<canvas width="8192" height="4096" id="cvs"/>
 <script>
 
 	const run = async () => {
+
 		const gpu = navigator.gpu
 		console.log(gpu)
 		const adapter = await gpu.requestAdapter()
@@ -119,7 +120,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			const textureDescriptor = {
 				size: {width: source.width, height: source.height},
 				format: 'rgba8unorm',
-				usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+				usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
 				label
 			};
 			// 밉맵을 생성할꺼면 소스를 계산해서... 밉맵 카운트를 추가 정의한다.
@@ -134,15 +135,15 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			// 생성한 텍스쳐에 데이터를 밀어넣는다.
 			gpuDevice.queue.copyExternalImageToTexture({source}, {texture}, textureDescriptor.size);
 
-
 			return texture;
 		}
 
 		let testTexture
-		await fetch('./crate.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
+		await fetch('./test2.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
 			console.log(imgBitmap)
-			testTexture = makeWebGPUTexture(device, imgBitmap, true, './crate.png')
+			testTexture = makeWebGPUTexture(device, imgBitmap, true, './test2.png')
 		})
+
 		/**
 		 *
 		 * @type {GPUBindGroupDescriptor}
@@ -203,7 +204,14 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		const pipeline = device.createRenderPipeline(pipelineDescriptor)
 		console.log(pipeline)
 
-		const renderTexture = context.getCurrentTexture()
+		const renderTexture = device.createTexture({
+			size: {
+				width: 8192,
+				height: 4096,
+			},
+			format: gpu.getPreferredCanvasFormat(),
+			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+		})
 		/**
 		 *
 		 * @type {GPUTextureView}
@@ -216,7 +224,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		 */
 		const colorAttachment = {
 			view: renderTextureView,
-			loadOp: "clear",
+			loadOp: "load",
 			storeOp: 'store'
 		}
 
@@ -248,49 +256,37 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
 		// 결과를 일단 복사하고...
 
-		const readPixelCommandEncoder = device.createCommandEncoder()
-		const originSize = renderTexture.width * renderTexture.height * 16
-		const cloneBuffer = device.createBuffer({
-			size: originSize,
-			usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
-		})
-
-		console.log(renderTexture.width, renderTexture.height)
-		console.log(renderTexture, renderTextureView)
-		readPixelCommandEncoder.copyTextureToBuffer(
-			{
-				texture: renderTexture,
-				origin: {x: 0, y: 0, z: 0},
-			},
-			{
-				buffer: cloneBuffer,
-				bytesPerRow: renderTexture.width * 4,
-				rowsPerImage: renderTexture.height
-			},
-			{
+		//TODO compute Shader 처리
+			const startTime = performance.now()
+		let effectOutputTexture = device.createTexture({
+			size: {
 				width: renderTexture.width,
 				height: renderTexture.height,
-				depthOrArrayLayers: 1
-			}
-		)
-		device.queue.submit([readPixelCommandEncoder.finish()]);
-		console.log('cloneBuffer',cloneBuffer)
-
-		//TODO compute Shader 처리
+			},
+			format: 'rgba8unorm',
+			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING
+		})
 
 		const computeCode = `
-            struct Image {
-                rgba: array<u32>
-            };
-            @group(0) @binding(0) var<storage, read_write> output: Image;
-            @compute @workgroup_size(1,1,1)
-
+            @group(0) @binding(0) var _Sampler: sampler;
+            @group(0) @binding(1) var _Texture : texture_2d<f32>;
+            @group(0) @binding(2) var outputTex : texture_storage_2d<rgba8unorm, write>;
+            @compute @workgroup_size(128,1,1)
             fn main (
               @builtin(global_invocation_id) global_id : vec3<u32>,
-
             ){
-                let index:u32 =  global_id.x + global_id.y * 512u;
-                output.rgba[index] = 4294967295u - output.rgba[index] ;
+                 let index = vec2<i32>(global_id.xy );
+
+                var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(f32(index.x)/8192,f32(index.y)/4096),0.0);
+                color.r = 1.0 - color.r;
+                color.g = 1.0 - color.g;
+                color.b = 1.0 - color.b;
+
+
+
+
+                textureStore(outputTex, index,color );
+
             };
 
         `
@@ -303,10 +299,22 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				{
 					binding: 0,
 					visibility: GPUShaderStage.COMPUTE,
-					buffer: {
-						type: 'storage'
+					sampler: {
+						type: 'filtering',
+					},
+				},
+				{
+					binding: 1,
+					visibility: GPUShaderStage.COMPUTE,
+					texture: {},
+				},
+				{
+					binding: 2,
+					visibility: GPUShaderStage.COMPUTE,
+					storageTexture: {
+						format: 'rgba8unorm'
 					}
-				}
+				},
 			]
 		})
 
@@ -315,11 +323,19 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			entries: [
 				{
 					binding: 0,
-					resource: {
-						buffer: cloneBuffer
-					}
+					resource: device.createSampler()
 
-				}
+				},
+				{
+					binding: 1,
+					resource: renderTextureView
+
+				},
+				{
+					binding: 2,
+					resource: effectOutputTexture.createView()
+
+				},
 			]
 		})
 
@@ -339,45 +355,12 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		const computePassEncoder = commentEncode_compute.beginComputePass()
 		computePassEncoder.setPipeline(pipeline_compute)
 		computePassEncoder.setBindGroup(0, bindGroup_compute)
-		computePassEncoder.dispatchWorkgroups(512, 512);
+		computePassEncoder.dispatchWorkgroups(8192, 4096);
 		computePassEncoder.end();
 		device.queue.submit([commentEncode_compute.finish()]);
-
-		console.log(pipeline_compute)
-
-		const finalTexture = device.createTexture({
-			size: {
-				width: renderTexture.width,
-				height: renderTexture.height,
-			},
-			format: gpu.getPreferredCanvasFormat(),
-			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-		})
-
-		//TODO 다시 텍스쳐화
-		{
-			const readPixelCommandEncoder = device.createCommandEncoder()
-
-			readPixelCommandEncoder.copyBufferToTexture(
-				{
-					buffer: cloneBuffer,
-					bytesPerRow: renderTexture.width * 4,
-					rowsPerImage: renderTexture.height
-				},
-				{
-					texture: finalTexture,
-					origin: {x: 0, y: 0, z: 0},
-				},
-				{
-					width: finalTexture.width,
-					height: finalTexture.height,
-					depthOrArrayLayers: 1
-				}
-			)
-			device.queue.submit([readPixelCommandEncoder.finish()]);
-
-		}
-
+		// return
+		// console.log(pipeline_compute)
+			console.log('time',performance.now() - startTime)
 		//TODO 처리된 결과를 다시 렌더링
 		{
 			const vertexCode2 = `
@@ -466,7 +449,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 					},
 					{
 						binding: 1,
-						resource: finalTexture.createView()
+						resource: effectOutputTexture.createView()
 					}
 				]
 			}
