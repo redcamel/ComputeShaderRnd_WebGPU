@@ -13,12 +13,12 @@
     </style>
 </head>
 <body>
-<canvas width="100%" height="100%" id="cvs"/>
+<canvas width="1024" height="512" id="cvs"/>
 <script>
 
 	const run = async () => {
-		const canvasW = 1024
-		const canvasH = 1024
+		const canvasW = 512
+		const canvasH = 512
 		const gpu = navigator.gpu
 		console.log(gpu)
 		const adapter = await gpu.requestAdapter(
@@ -153,9 +153,9 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		}
 
 		let testTexture
-		await fetch('./test.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
+		await fetch('./crate.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
 			console.log(imgBitmap)
-			testTexture = makeWebGPUTexture(device, imgBitmap, true, './test.png')
+			testTexture = makeWebGPUTexture(device, imgBitmap, true, './crate.png')
 		})
 		console.log(testTexture)
 
@@ -281,7 +281,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				height: renderTexture.height,
 			},
 			format: 'rgba8unorm',
-			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING  | GPUTextureUsage.COPY_SRC
+			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		const WORK_SIZE_X = 8
 		const WORK_SIZE_Y = 4
@@ -295,13 +295,17 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
               @builtin(global_invocation_id) global_id : vec3<u32>,
             ){
                  let index = vec2<i32>(global_id.xy);
-
-                let dims :vec2<u32> = textureDimensions(_Texture,0);
+                 let dims :vec2<u32> = textureDimensions(_Texture,0);
                 var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(index) / vec2<f32>(dims),0.0);
-                color.r = 1.0 - color.r;
-                color.g = 1.0 - color.g;
-                color.b = 1.0 - color.b;
+                if(f32(index.x) < f32(dims.x/4)){
+                }else{
+                    color.r = 1.0 - color.r;
+                    color.g = 1.0 - color.g;
+                    color.b = 1.0 - color.b;
+
+                }
                 textureStore(outputTex, index,color );
+
 
 
 
@@ -382,7 +386,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				height: renderTexture.height,
 			},
 			format: 'rgba8unorm',
-			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC  | GPUTextureUsage.COPY_DST
+			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
 		})
 
 		{
@@ -402,14 +406,16 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
                 let dims :vec2<u32> = textureDimensions(_Texture,0);
 
-                if(f32(index.x) < f32(dims.x/3)){
-                    var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(index) / vec2<f32>(dims),0.0);
-                    let gray:f32 = (color.r  + color.g + color.b)/3.0;
-                    textureStore(outputTex, index,vec4<f32>(gray,gray,gray,color.a));
-                }else   if(f32(index.x) < f32(dims.x/3 * 2)){
+                if(f32(index.x) < f32(dims.x/4 * 2)){
 
-                }else{
+                }else  if(f32(index.x) < f32(dims.x/4 * 3 )){
+                         var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(index) / vec2<f32>(dims),0.0);
+                        let gray:f32 = (color.r  + color.g + color.b)/3.0;
+                        textureStore(outputTex, index,vec4<f32>(gray,gray,gray,color.a));
+                }
+                else{
                     var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(index) / vec2<f32>(dims),0.0);
+
                     color.r = 1.0 - color.r;
                     color.g = 1.0 - color.g;
                     color.b = 1.0 - color.b;
