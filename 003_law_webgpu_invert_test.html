@@ -9,8 +9,8 @@
 <script>
 
 	const run = async () => {
-		const canvasW = 2048
-		const canvasH = 2048
+		const canvasW = 2048 * 4
+		const canvasH = 2048 * 4
 		const gpu = navigator.gpu
 		console.log(gpu)
 		const adapter = await gpu.requestAdapter(
@@ -21,8 +21,8 @@
 
 		)
 		console.log(device)
-		document.getElementById('cvs').width = canvasW
-		document.getElementById('cvs').height = canvasH
+		// document.getElementById('cvs').width = canvasW
+		// document.getElementById('cvs').height = canvasH
 		const context = document.getElementById('cvs').getContext('webgpu')
 		console.log(context)
 
@@ -258,8 +258,6 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
 		const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor)
 		passEncoder.setPipeline(pipeline)
-		passEncoder.setViewport(0, 0, canvasW, canvasH, 0, 1)
-		passEncoder.setScissorRect(0, 0, canvasW, canvasH)
 		passEncoder.setBindGroup(0, bindGroup)
 		passEncoder.draw(6, 1, 0, 0);
 		passEncoder.end()
@@ -282,7 +280,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
             @group(0) @binding(0) var _Sampler: sampler;
             @group(0) @binding(1) var _Texture : texture_2d<f32>;
             @group(0) @binding(2) var outputTex : texture_storage_2d<rgba8unorm, write>;
-            @compute @workgroup_size(1,1,1)
+            @compute @workgroup_size(128,1,1)
             fn main (
               @builtin(global_invocation_id) global_id : vec3<u32>,
             ){
@@ -358,11 +356,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				entryPoint: 'main',
 			}
 		})
-		const startTime = performance.now()
+			const startTime = performance.now()
 		const commentEncode_compute = device.createCommandEncoder()
 		const computePassEncoder = commentEncode_compute.beginComputePass()
 		computePassEncoder.setPipeline(pipeline_compute)
-
 		computePassEncoder.setBindGroup(0, bindGroup_compute)
 		computePassEncoder.dispatchWorkgroups(canvasW, canvasH);
 		computePassEncoder.end();
@@ -543,8 +540,6 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			 */
 			const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor)
 			passEncoder.setPipeline(pipeline)
-			passEncoder.setViewport(0, 0, canvasW, canvasH, 0, 1)
-			passEncoder.setScissorRect(0, 0, canvasW, canvasH)
 			passEncoder.setBindGroup(0, bindGroup)
 			passEncoder.draw(6, 1, 0, 0);
 			passEncoder.end()
