@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Title</title>
-    <meta http-equiv="origin-trial" content="AuT39+Duz+ZRtx1SlkTa2EJAL3fE4ffZq72D+4KnjZkx0XC9g6GL+kteswN1p9S6Kd4NJUlAwMWB1VWwr3lCqAgAAABleyJvcmlnaW4iOiJodHRwczovL3JlZGNhbWVsLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViR1BVIiwiZXhwaXJ5IjoxNjc1MjA5NTk5LCJpc1N1YmRvbWFpbiI6dHJ1ZX0=">
-    <meta http-equiv="origin-trial" content="AoObp2NQ8sEb9+TWvbU/cWFBaNRNGXZtCp6yZSrjuqlH+JDRV9cP+abD9k2ydtE92JpehZbovmhZ2pKiG8obLAYAAABJeyJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjMwMDMiLCJmZWF0dXJlIjoiV2ViR1BVIiwiZXhwaXJ5IjoxNjc1MjA5NTk5fQ==">
+    <meta http-equiv="origin-trial"
+          content="AuT39+Duz+ZRtx1SlkTa2EJAL3fE4ffZq72D+4KnjZkx0XC9g6GL+kteswN1p9S6Kd4NJUlAwMWB1VWwr3lCqAgAAABleyJvcmlnaW4iOiJodHRwczovL3JlZGNhbWVsLmdpdGh1Yi5pbzo0NDMiLCJmZWF0dXJlIjoiV2ViR1BVIiwiZXhwaXJ5IjoxNjc1MjA5NTk5LCJpc1N1YmRvbWFpbiI6dHJ1ZX0=">
+    <meta http-equiv="origin-trial"
+          content="AoObp2NQ8sEb9+TWvbU/cWFBaNRNGXZtCp6yZSrjuqlH+JDRV9cP+abD9k2ydtE92JpehZbovmhZ2pKiG8obLAYAAABJeyJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjMwMDMiLCJmZWF0dXJlIjoiV2ViR1BVIiwiZXhwaXJ5IjoxNjc1MjA5NTk5fQ==">
 
     <style>
         html, body {
@@ -156,9 +158,11 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		}
 
 		let testTexture
-		await fetch('./crate.png').then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
+		// const url = './crate.png'
+		const url = './test.png'
+		await fetch(url).then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
 			console.log(imgBitmap)
-			testTexture = makeWebGPUTexture(device, imgBitmap, true, './crate.png')
+			testTexture = makeWebGPUTexture(device, imgBitmap, true, url)
 		})
 		console.log(testTexture)
 
@@ -171,11 +175,16 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			entries: [
 				{
 					binding: 0,
-					resource: device.createSampler()
+					resource: device.createSampler({minFilter: 'linear'})
 				},
 				{
 					binding: 1,
-					resource: testTexture.createView()
+					resource: testTexture.createView(
+						{
+							baseMipLevel: 0,
+							mipLevelCount: 1
+						}
+					)
 				}
 			]
 		}
@@ -235,7 +244,12 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		 *
 		 * @type {GPUTextureView}
 		 */
-		const renderTextureView = renderTexture.createView()
+		const renderTextureView = renderTexture.createView(
+			{
+				baseMipLevel: 0,
+				mipLevelCount: 1
+			}
+		)
 
 		/**
 		 *
@@ -348,17 +362,23 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			entries: [
 				{
 					binding: 0,
-					resource: device.createSampler()
+					resource: device.createSampler({minFilter: 'linear'})
 
 				},
 				{
 					binding: 1,
-					resource: renderTexture.createView({})
+					resource: renderTexture.createView({
+						baseMipLevel: 0,
+						mipLevelCount: 1
+					})
 
 				},
 				{
 					binding: 2,
-					resource: effectOutputTexture.createView()
+					resource: effectOutputTexture.createView({
+						baseMipLevel: 0,
+						mipLevelCount: 1
+					})
 
 				},
 			]
@@ -378,6 +398,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		const startTime = performance.now()
 		const commentEncode_compute = device.createCommandEncoder()
 		const computePassEncoder = commentEncode_compute.beginComputePass()
+
 		computePassEncoder.setPipeline(pipeline_compute)
 		computePassEncoder.setBindGroup(0, bindGroup_compute)
 		computePassEncoder.dispatchWorkgroups(Math.ceil(canvasW / WORK_SIZE_X), Math.ceil(canvasH / WORK_SIZE_Y));
@@ -464,7 +485,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				entries: [
 					{
 						binding: 0,
-						resource: device.createSampler()
+						resource: device.createSampler({minFilter: 'linear'})
 
 					},
 					{
@@ -495,10 +516,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			const commentEncode_compute = device.createCommandEncoder()
 			commentEncode_compute.copyTextureToTexture(
 				{
-					texture: effectOutputTexture
+					texture: effectOutputTexture,
 				},
 				{
-					texture: effectOutputTexture2
+					texture: effectOutputTexture2,
 				},
 				{
 					width: effectOutputTexture.width,
@@ -601,7 +622,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				entries: [
 					{
 						binding: 0,
-						resource: device.createSampler({})
+						resource: device.createSampler({minFilter: 'linear'})
 					},
 					{
 						binding: 1,
