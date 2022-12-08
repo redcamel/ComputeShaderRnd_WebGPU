@@ -158,8 +158,8 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		}
 
 		let testTexture
-		// const url = './crate.png'
-		const url = './test.png'
+		const url = './crate.png'
+		// const url = './test.png'
 		await fetch(url).then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
 			console.log(imgBitmap)
 			testTexture = makeWebGPUTexture(device, imgBitmap, true, url)
