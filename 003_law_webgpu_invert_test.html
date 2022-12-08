@@ -298,7 +298,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
               @builtin(global_invocation_id) global_id : vec3<u32>,
             ){
                  let index = vec2<i32>(global_id.xy);
-                 let dims :vec2<u32> = textureDimensions(_Texture,0);
+                 let dims :vec2<u32> = vec2<u32>(textureDimensions(_Texture,0));
                 var color:vec4<f32> = textureSampleLevel(_Texture, _Sampler, vec2<f32>(index) / vec2<f32>(dims),0.0);
                 if(f32(index.x) < f32(dims.x/4)){
                 }else{
@@ -407,7 +407,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
             ){
                  let index = vec2<i32>(global_id.xy);
 
-                let dims :vec2<u32> = textureDimensions(_Texture,0);
+       let dims :vec2<u32> = vec2<u32>(textureDimensions(_Texture,0));
 
                 if(f32(index.x) < f32(dims.x/4 * 2)){
 
