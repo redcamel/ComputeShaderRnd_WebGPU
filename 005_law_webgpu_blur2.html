@@ -320,10 +320,17 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
             ){
                 let index = vec2<i32>(global_id.xy);
                 let dims :vec2<u32> = vec2<u32>(textureDimensions(_Texture,0));
-                for (var r = 0; r < 8; r++) {
+                for (var r = 0; r < 4; r++) {
                     for (var c = 0; c < 4; c++) {
                       //tile[r][4* LocalInvocationID.x + u32(c)] = vec4<f32>( (vec2<f32>(index)/vec2<f32>(dims)).x, 0, 0, 1 );
-                      let uv:vec2<f32> = vec2<f32>(index + vec2<i32>(LocalInvocationID.xy)) / vec2<f32>(dims);
+                      //let uv:vec2<f32> = vec2<f32>(
+                        //  f32(WorkGroupID.x  + LocalInvocationID.x * 4+ u32(c) ) / 128f,
+                          //f32(WorkGroupID.y  + LocalInvocationID.y * 4 ) / 128f
+                      //);
+                      let uv:vec2<f32> = vec2<f32>(
+                        f32(WorkGroupID.x  + LocalInvocationID.x * 4),
+                        f32(WorkGroupID.y  + LocalInvocationID.y * 4 )
+                      )/vec2<f32>(dims).xy;
                       tile[r][4* LocalInvocationID.x + u32(c)] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
                     }
                 }
