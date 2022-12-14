@@ -300,7 +300,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			format: 'rgba8unorm',
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
-		const WORK_SIZE_X = 32
+		const WORK_SIZE_X = 128
 		const WORK_SIZE_Y = 1
 		const WORK_SIZE_Z = 1
 		const computeCode = `
@@ -322,25 +322,20 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
                 let dims :vec2<u32> = vec2<u32>(textureDimensions(_Texture,0));
                 for (var r = 0; r < 4; r++) {
                     for (var c = 0; c < 4; c++) {
-                      //tile[r][4* LocalInvocationID.x + u32(c)] = vec4<f32>( (vec2<f32>(index)/vec2<f32>(dims)).x, 0, 0, 1 );
-                      //let uv:vec2<f32> = vec2<f32>(
-                        //  f32(WorkGroupID.x  + LocalInvocationID.x * 4+ u32(c) ) / 128f,
-                          //f32(WorkGroupID.y  + LocalInvocationID.y * 4 ) / 128f
-                      //);
                       let uv:vec2<f32> = vec2<f32>(
-                        f32(WorkGroupID.x  + LocalInvocationID.x * 4),
-                        f32(WorkGroupID.y  + LocalInvocationID.y * 4 )
-                      )/vec2<f32>(dims).xy;
-                      tile[r][4* LocalInvocationID.x + u32(c)] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
+                        f32(WorkGroupID.x  + LocalInvocationID.x ),
+                        f32(WorkGroupID.y  + LocalInvocationID.y  )
+                      )/vec2<f32>(dims).xy * vec2<f32>(4,1);
+                      tile[r][LocalInvocationID.x + LocalInvocationID.y ] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
                     }
                 }
-                let tileDim = 128u;
-                let baseIndex = vec2<i32>(WorkGroupID.xy * vec2<u32>(tileDim ,4) + LocalInvocationID.xy * vec2(4,1));
+
                 workgroupBarrier();
+                let baseIndex = vec2<i32>(WorkGroupID.xy * vec2<u32>(1 ,1) + LocalInvocationID.xy * vec2(4,1));
                 var finalColor:vec4<f32> = vec4<f32>(0.0);
                 for (var r = 0; r < 4; r++) {
                     for (var c = 0; c < 4; c++) {
-                      finalColor = tile[r][4* LocalInvocationID.x + u32(c)];
+                      finalColor = tile[r][LocalInvocationID.x + LocalInvocationID.y ];
                       textureStore(outputTex, baseIndex + vec2(c,r),finalColor );
                     }
                 }

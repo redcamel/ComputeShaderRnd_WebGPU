@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/redcamel/ComputeShaderRnd_WebGPU.git"
   },
-  "types":"./node_modules/@webgpu/types",
+  "types": "./node_modules/@webgpu/types",
   "author": "",
   "license": "ISC",
   "bugs": {
