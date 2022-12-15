@@ -300,47 +300,63 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			format: 'rgba8unorm',
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
-		const WORK_SIZE_X = 128
+		// 쓰레드 지정인가?
+		const WORK_SIZE_X = 32
 		const WORK_SIZE_Y = 1
 		const WORK_SIZE_Z = 1
+		const DISPATCH_X = Math.ceil(canvasW / WORK_SIZE_X)
+		const DISPATCH_Y = Math.ceil(canvasH / WORK_SIZE_Y)
+		const DISPATCH_Z = 1
 		const computeCode = `
             @group(0) @binding(0) var _Sampler: sampler;
             @group(0) @binding(1) var _Texture : texture_2d<f32>;
             @group(0) @binding(2) var outputTex : texture_storage_2d<rgba8unorm, write>;
-
-            var<workgroup> tile : array<array<vec4<f32>, 128>, 4>;
+            var<workgroup> tile : array<vec4<f32>,${WORK_SIZE_X * WORK_SIZE_Y * WORK_SIZE_Z }>;
             @compute @workgroup_size(${WORK_SIZE_X},${WORK_SIZE_Y},${WORK_SIZE_Z})
 
-
-
             fn main (
-                @builtin(global_invocation_id) global_id : vec3<u32>,
                 @builtin(workgroup_id) WorkGroupID : vec3<u32>,
-                @builtin(local_invocation_id) LocalInvocationID : vec3<u32>
+                @builtin(global_invocation_id) global_id : vec3<u32>,
+                @builtin(local_invocation_id) LocalInvocationID : vec3<u32>,
+                @builtin(local_invocation_index) LocalInvocationINDEX : u32
+
             ){
-                let index = vec2<i32>(global_id.xy);
-                let dims :vec2<u32> = vec2<u32>(textureDimensions(_Texture,0));
-                for (var r = 0; r < 4; r++) {
-                    for (var c = 0; c < 4; c++) {
-                      let uv:vec2<f32> = vec2<f32>(
-                        f32(WorkGroupID.x  + LocalInvocationID.x ),
-                        f32(WorkGroupID.y  + LocalInvocationID.y  )
-                      )/vec2<f32>(dims).xy * vec2<f32>(4,1);
-                      tile[r][LocalInvocationID.x + LocalInvocationID.y ] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
-                    }
-                }
+                let dims = (textureDimensions(_Texture,0));
+                let uv:vec2<f32> = vec2<f32>(global_id.xy)/vec2<f32>(dims).xy ;
+                let tileIndex = LocalInvocationINDEX;
+                tile[tileIndex] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
 
                 workgroupBarrier();
-                let baseIndex = vec2<i32>(WorkGroupID.xy * vec2<u32>(1 ,1) + LocalInvocationID.xy * vec2(4,1));
-                var finalColor:vec4<f32> = vec4<f32>(0.0);
-                for (var r = 0; r < 4; r++) {
-                    for (var c = 0; c < 4; c++) {
-                      finalColor = tile[r][LocalInvocationID.x + LocalInvocationID.y ];
-                      textureStore(outputTex, baseIndex + vec2(c,r),finalColor );
-                    }
+
+                let baseIndex = vec2<i32>(global_id.xy);
+                //var finalColor:vec4<f32> = tile[tileIndex];
+                //textureStore(outputTex, baseIndex ,finalColor );
+
+                var finalColor:vec4<f32> = vec4(0.0);
+                var total:f32 = 0.0;
+                let filterSize:i32 = 100;
+
+                for (var t:i32 = 0; t <= filterSize; t++) {
+                        let weight:f32 = 1.0/f32(filterSize);
+                        if( t + i32(tileIndex) <= ${WORK_SIZE_X * WORK_SIZE_Y * WORK_SIZE_Z }){
+
+                        var color:vec4<f32> = tile[ t + i32(tileIndex) ];
+                        color.r = color.r * color.a;
+                        color.g = color.g * color.a;
+                        color.b = color.b * color.a;
+                        finalColor += color * weight;
+                        total += weight;
+
+                        }
+
+
+
                 }
-
-
+                finalColor = finalColor / total;
+                finalColor.r = finalColor.r / (finalColor.a + 0.00001);
+                finalColor.g = finalColor.g / (finalColor.a + 0.00001);
+                finalColor.b = finalColor.b / (finalColor.a + 0.00001);
+                textureStore(outputTex, baseIndex,finalColor );
 
             };
 
@@ -417,7 +433,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
 		computePassEncoder.setPipeline(pipeline_compute)
 		computePassEncoder.setBindGroup(0, bindGroup_compute)
-		computePassEncoder.dispatchWorkgroups(Math.ceil(canvasW / WORK_SIZE_X), Math.ceil(canvasH / WORK_SIZE_Y));
+		computePassEncoder.dispatchWorkgroups(DISPATCH_X, DISPATCH_Y, DISPATCH_Z);
 		computePassEncoder.end();
 		device.queue.submit([commentEncode_compute.finish()]);
 
