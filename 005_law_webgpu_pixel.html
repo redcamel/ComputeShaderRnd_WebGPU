@@ -24,6 +24,7 @@
 	const run = async () => {
 		const canvasW = 512
 		const canvasH = 512
+
 		const gpu = navigator.gpu
 		console.log(gpu)
 		const adapter = await gpu.requestAdapter(
@@ -301,17 +302,18 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		// 쓰레드 지정인가?
-		const WORK_SIZE_X = 16
-		const WORK_SIZE_Y = 16
+		const FILTER_W = 30
+		const FILTER_H = 30
+		const WORK_SIZE_X = 32
+		const WORK_SIZE_Y = 1
 		const WORK_SIZE_Z = 1
 		const DISPATCH_X = Math.ceil(canvasW / WORK_SIZE_X)
 		const DISPATCH_Y = Math.ceil(canvasH / WORK_SIZE_Y)
 		const DISPATCH_Z = 1
 		const computeCode = `
-            @group(0) @binding(0) var _Sampler: sampler;
-            @group(0) @binding(1) var _Texture : texture_2d<f32>;
-            @group(0) @binding(2) var outputTex : texture_storage_2d<rgba8unorm, write>;
-            var<workgroup> tile : array<vec4<f32>,${WORK_SIZE_X * WORK_SIZE_Y * WORK_SIZE_Z }>;
+            @group(0) @binding(0) var _Texture : texture_2d<f32>;
+            @group(0) @binding(1) var outputTex : texture_storage_2d<rgba8unorm, write>;
+            var<workgroup> tile : array<vec4<f32>,${WORK_SIZE_X * WORK_SIZE_Y * WORK_SIZE_Z}>;
             @compute @workgroup_size(${WORK_SIZE_X},${WORK_SIZE_Y},${WORK_SIZE_Z})
 
             fn main (
@@ -321,41 +323,48 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
                 @builtin(local_invocation_index) LocalInvocationINDEX : u32
 
             ){
+
+                var tileIndex = LocalInvocationID.x + ${WORK_SIZE_X} * LocalInvocationID.y + LocalInvocationID.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
                 let dims = (textureDimensions(_Texture,0));
-                let tileIndex = LocalInvocationINDEX;
-                var uv:vec2<f32> = vec2<f32>(global_id.xy)/vec2<f32>(dims).xy ;
-                tile[tileIndex] = textureSampleLevel(_Texture, _Sampler, uv ,0.0);
-                workgroupBarrier();
+                let globalUV:vec2<u32> = global_id.xy  ;
+                let uv:vec2<u32> = vec2<u32>( globalUV/dims );
+                let u_width = ${FILTER_W}u;
+                let u_height = ${FILTER_H}u;
+                let ratioW:f32 = f32(globalUV.x / u_width);
+                let ratioH:f32 = f32(globalUV.y / u_height);
 
-                let baseIndex = vec2<i32>(global_id.xy);
-                //var finalColor:vec4<f32> = tile[tileIndex];
-                //textureStore(outputTex, baseIndex ,finalColor );
-
-                var finalColor:vec4<f32> = vec4(0.0);
-                var total:f32 = 0.0;
-                let filterSize:i32 = 20;
-
-                for (var t:i32 = 0; t <= filterSize; t++) {
-                        let weight:f32 = 1.0/f32(filterSize);
-                        if( t + i32(tileIndex) <= ${WORK_SIZE_X * WORK_SIZE_Y * WORK_SIZE_Z }){
-
-                        var color:vec4<f32> = tile[ t + i32(tileIndex) ];
-                        color.r = color.r * color.a;
-                        color.g = color.g * color.a;
-                        color.b = color.b * color.a;
-                        finalColor += color * weight;
-                        total += weight;
-
-                        }
-
-
+                // TODO 텍셀 로드를 더 적게 하고싶다.
+                let coord:vec2<u32> = vec2<u32>( u_width * u32(ratioW), u_height * u32(ratioH) );
+                let saveYn = globalUV.x == coord.x && globalUV.y == coord.y;
+                if(saveYn){
+                    tile[tileIndex] = textureLoad(_Texture, coord ,0);
+                }else{
 
                 }
-                finalColor = finalColor / total;
-                finalColor.r = finalColor.r / (finalColor.a + 0.00001);
-                finalColor.g = finalColor.g / (finalColor.a + 0.00001);
-                finalColor.b = finalColor.b / (finalColor.a + 0.00001);
-                textureStore(outputTex, baseIndex,finalColor );
+                workgroupBarrier();
+
+                 var targetLocation:vec3<u32>;
+                 if(saveYn){
+                     targetLocation = vec3<u32>(
+                            LocalInvocationID.x,
+                            LocalInvocationID.y,
+                            LocalInvocationID.z
+                     );
+                 }else{
+                     // TODO 인덱스를 찾아야함
+                     targetLocation = vec3<u32>(
+                            LocalInvocationID.x ,
+                            LocalInvocationID.y ,
+                            LocalInvocationID.z
+                     );
+                 }
+
+                 let newIndex = targetLocation.x + ${WORK_SIZE_X} * targetLocation.y + targetLocation.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
+                 textureStore(outputTex, globalUV, tile[newIndex] );
+
+
+
+
 
             };
 
@@ -369,17 +378,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 				{
 					binding: 0,
 					visibility: GPUShaderStage.COMPUTE,
-					sampler: {
-						type: 'filtering',
-					},
-				},
-				{
-					binding: 1,
-					visibility: GPUShaderStage.COMPUTE,
 					texture: {},
 				},
 				{
-					binding: 2,
+					binding: 1,
 					visibility: GPUShaderStage.COMPUTE,
 					storageTexture: {
 						format: 'rgba8unorm'
@@ -391,25 +393,15 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		const bindGroup_compute = device.createBindGroup({
 			layout: bindGroupLayout_compute,
 			entries: [
+
 				{
 					binding: 0,
-					resource: device.createSampler({minFilter: 'linear'})
+					resource: renderTexture.createView()
 
 				},
 				{
 					binding: 1,
-					resource: renderTexture.createView({
-						baseMipLevel: 0,
-						mipLevelCount: 1
-					})
-
-				},
-				{
-					binding: 2,
-					resource: effectOutputTexture.createView({
-						baseMipLevel: 0,
-						mipLevelCount: 1
-					})
+					resource: effectOutputTexture.createView()
 
 				},
 			]
