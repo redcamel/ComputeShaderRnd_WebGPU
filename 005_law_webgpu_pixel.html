@@ -323,36 +323,36 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
                 @builtin(local_invocation_index) LocalInvocationINDEX : u32
 
             ){
-
-                var tileIndex = LocalInvocationID.x + ${WORK_SIZE_X} * LocalInvocationID.y + LocalInvocationID.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
+                let u_width = ${FILTER_W}u;
+                let u_height = ${FILTER_H}u;
+                //
+                let tileIndex = LocalInvocationID.x + ${WORK_SIZE_X} * LocalInvocationID.y + LocalInvocationID.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
                 let dims = (textureDimensions(_Texture,0));
                 let globalUV:vec2<u32> = global_id.xy  ;
                 let uv:vec2<u32> = vec2<u32>( globalUV/dims );
-                let u_width = ${FILTER_W}u;
-                let u_height = ${FILTER_H}u;
+
+
+                //
                 let ratioW:f32 = f32(globalUV.x / u_width);
                 let ratioH:f32 = f32(globalUV.y / u_height);
 
-                // TODO 텍셀 로드를 더 적게 하고싶다.
                 let coord:vec2<u32> = vec2<u32>( u_width * u32(ratioW), u_height * u32(ratioH) );
-                let saveYn = globalUV.x == coord.x && globalUV.y == coord.y;
+                let saveYn = (globalUV.x % ${WORK_SIZE_X}) == 0u && (globalUV.y % ${WORK_SIZE_Y}) == 0u;
                 if(saveYn){
                     tile[tileIndex] = textureLoad(_Texture, coord ,0);
                 }else{
-                    tile[tileIndex] = textureLoad(_Texture, coord ,0);
                 }
                 workgroupBarrier();
                 var newIndex = tileIndex;
-
                  if(saveYn){
 
                  }else{
-                     // TODO 인덱스를 찾아야함
-
+                       newIndex =
+                       LocalInvocationID.x - ((LocalInvocationID.x % ${WORK_SIZE_X}) )
+                       + ${WORK_SIZE_X} * (LocalInvocationID.y - ((LocalInvocationID.y % ${WORK_SIZE_Y})))
+                       + LocalInvocationID.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
                  }
-
-
-                 textureStore(outputTex, globalUV, tile[tileIndex] );
+                 textureStore(outputTex, globalUV, tile[newIndex] );
 
 
 
