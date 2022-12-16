@@ -302,8 +302,8 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		// 쓰레드 지정인가?
-		const FILTER_W = 30
-		const FILTER_H = 30
+		const FILTER_W = 32
+		const FILTER_H = 32
 		const WORK_SIZE_X = 32
 		const WORK_SIZE_Y = 1
 		const WORK_SIZE_Z = 1
@@ -339,28 +339,20 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
                 if(saveYn){
                     tile[tileIndex] = textureLoad(_Texture, coord ,0);
                 }else{
-
+                    tile[tileIndex] = textureLoad(_Texture, coord ,0);
                 }
                 workgroupBarrier();
+                var newIndex = tileIndex;
 
-                 var targetLocation:vec3<u32>;
                  if(saveYn){
-                     targetLocation = vec3<u32>(
-                            LocalInvocationID.x,
-                            LocalInvocationID.y,
-                            LocalInvocationID.z
-                     );
+
                  }else{
                      // TODO 인덱스를 찾아야함
-                     targetLocation = vec3<u32>(
-                            LocalInvocationID.x ,
-                            LocalInvocationID.y ,
-                            LocalInvocationID.z
-                     );
+
                  }
 
-                 let newIndex = targetLocation.x + ${WORK_SIZE_X} * targetLocation.y + targetLocation.z * ${WORK_SIZE_X}* ${WORK_SIZE_Y};
-                 textureStore(outputTex, globalUV, tile[newIndex] );
+
+                 textureStore(outputTex, globalUV, tile[tileIndex] );
 
 
 
