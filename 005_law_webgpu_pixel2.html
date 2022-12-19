@@ -302,10 +302,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		// 쓰레드 지정인가?
-		const FILTER_W = 32
-		const FILTER_H = 16
+		const FILTER_W = 40
+		const FILTER_H = 6
 		const WORK_SIZE_X = 32
-		const WORK_SIZE_Y = 8
+		const WORK_SIZE_Y = 6
 		const WORK_SIZE_Z = 1
 		const DISPATCH_X = Math.ceil(canvasW / WORK_SIZE_X)
 		const DISPATCH_Y = Math.ceil(canvasH / WORK_SIZE_Y)
@@ -335,28 +335,30 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
                 let coord:vec2<u32> = vec2<u32>( u_width * u32(ratioW), u_height * u32(ratioH) );
 
-                let dX = min(${WORK_SIZE_X}, LocalInvocationID.x % u_width) ;
-                let dY = min(${WORK_SIZE_Y},LocalInvocationID.y % u_height) ;
+                var dX = LocalInvocationID.x % u_width;
+                if(dX >= u_width){
+                     dX = LocalInvocationID.x % u_width ;
+                }else{
+                     dX = LocalInvocationID.x % u_width ;
+
+                }
+                let dY = LocalInvocationID.y %  u_height;
 
                 let saveYn = dX == 0u && dY == 0u;
-                if(saveYn){
+                //let saveYn = LocalInvocationID.x  == 0u && LocalInvocationID.y  == 0u;
+                if(saveYn) {
                     tile[tileIndex] = textureLoad(_Texture, coord ,0);
-                }else{
                 }
                 workgroupBarrier();
                 var newIndex = tileIndex;
-                 if(saveYn){
+                if(saveYn){
 
-                 }else{
-                     let tX = LocalInvocationID.x - dX;
-                     let tY = LocalInvocationID.y - dY;
+                }else{
+                     let tX = max(0,LocalInvocationID.x - dX );
+                     let tY = max(0,LocalInvocationID.y - dY);
                      newIndex = tX + ${WORK_SIZE_X} * tY;
-                 }
-                 textureStore(outputTex, globalUV, tile[newIndex] );
-
-
-
-
+                }
+                textureStore(outputTex, globalUV, tile[newIndex] );
 
             };
 
