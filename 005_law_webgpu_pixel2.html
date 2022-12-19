@@ -302,10 +302,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		// 쓰레드 지정인가?
-		const FILTER_W = 40
-		const FILTER_H = 6
+		const FILTER_W = 41
+		const FILTER_H = 16
 		const WORK_SIZE_X = 32
-		const WORK_SIZE_Y = 6
+		const WORK_SIZE_Y = 4
 		const WORK_SIZE_Z = 1
 		const DISPATCH_X = Math.ceil(canvasW / WORK_SIZE_X)
 		const DISPATCH_Y = Math.ceil(canvasH / WORK_SIZE_Y)
@@ -335,27 +335,35 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 
                 let coord:vec2<u32> = vec2<u32>( u_width * u32(ratioW), u_height * u32(ratioH) );
 
-                var dX = LocalInvocationID.x % u_width;
-                if(dX >= u_width){
-                     dX = LocalInvocationID.x % u_width ;
+                var dX = 0u;
+                var cX = 0u;
+                var dY = 0u;
+                var cY = 0u;
+                if(u_width >= ${WORK_SIZE_X}){
+                     dX = u32(LocalInvocationID.x / u_width) ;
+                     cX = u32( ${WORK_SIZE_X}/2);
                 }else{
-                     dX = LocalInvocationID.x % u_width ;
+                     dX = u32(LocalInvocationID.x / ${WORK_SIZE_X});
+                     cX = u32(u_width/2);
+                }
+                if(u_height >= ${WORK_SIZE_Y}){
+                     dX = u32(LocalInvocationID.y / u_height) ;
+
+                }else{
+                     dX = u32(LocalInvocationID.y / ${WORK_SIZE_Y});
 
                 }
-                let dY = LocalInvocationID.y %  u_height;
 
-                let saveYn = dX == 0u && dY == 0u;
-                //let saveYn = LocalInvocationID.x  == 0u && LocalInvocationID.y  == 0u;
-                if(saveYn) {
-                    tile[tileIndex] = textureLoad(_Texture, coord ,0);
-                }
+                //let saveYn = dX == 0u && dY == 0u;
+                let saveYn = LocalInvocationID.x == cX;
+                if(saveYn) { tile[tileIndex] = textureLoad(_Texture, coord ,0);}
                 workgroupBarrier();
                 var newIndex = tileIndex;
                 if(saveYn){
 
                 }else{
-                     let tX = max(0,LocalInvocationID.x - dX );
-                     let tY = max(0,LocalInvocationID.y - dY);
+                     let tX = cX;
+                     let tY = LocalInvocationID.y - dY;
                      newIndex = tX + ${WORK_SIZE_X} * tY;
                 }
                 textureStore(outputTex, globalUV, tile[newIndex] );
