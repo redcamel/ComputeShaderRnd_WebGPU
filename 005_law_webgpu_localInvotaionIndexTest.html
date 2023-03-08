@@ -159,8 +159,8 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 		}
 
 		let testTexture
-		const url = './crate.png'
-		// const url = './test.png'
+		//const url = './crate.png'
+		 const url = './test.png'
 		await fetch(url).then(response => response.blob().then(blob => createImageBitmap(blob))).then(imgBitmap => {
 			console.log(imgBitmap)
 			testTexture = makeWebGPUTexture(device, imgBitmap, true, url)
@@ -302,9 +302,9 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 			usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC
 		})
 		// 쓰레드 지정인가?
-		const FILTER_SIZE = 8
-		const WORK_SIZE_X = 16
-		const WORK_SIZE_Y = 16
+		const FILTER_SIZE = 16
+		const WORK_SIZE_X = 8
+		const WORK_SIZE_Y = 8
 		const WORK_SIZE_Z = 1
 		const DISPATCH_X = Math.ceil(canvasW / WORK_SIZE_X)
 		const DISPATCH_Y = Math.ceil(canvasH / WORK_SIZE_Y)
@@ -316,7 +316,7 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
             const workSizeY = ${WORK_SIZE_Y};
             const workSizeZ = ${WORK_SIZE_Z};
             const u_filterSize:u32 = ${FILTER_SIZE};
-            var<workgroup> tile : array<vec4<f32>, workSizeX * u_filterSize / workSizeX * workSizeY * workSizeZ>;
+            var<workgroup> tile : array<vec4<f32>, workSizeX * workSizeY * workSizeZ * 4 >;
             @compute @workgroup_size(workSizeX,workSizeY,workSizeZ)
 
             fn main (
@@ -337,8 +337,10 @@ fn main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
                 let ratioX = u_filterSize / workSizeX;
                 let ratioY = u_filterSize / workSizeY;
                 // 워크 사이즈 보다 클떄
-                var tX = u32(coord.x / u_filterSize);
-                var tY = u32(coord.y / u_filterSize);
+                let minX = min(workSizeX , u_filterSize);
+                let minY = min(workSizeY , u_filterSize);
+                var tX = u32(floor(f32(coord.x) / (f32(workSizeX / u_filterSize))));
+                var tY = u32(floor(f32(coord.y) / (f32(workSizeY / u_filterSize))));
                 var newIndex = tX + tY * u_filterSize ;
 
 
